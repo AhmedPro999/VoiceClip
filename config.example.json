@@ -1,0 +1,47 @@
+{
+  "hotkeys": {
+    "arabic": "alt+a",
+    "english": "alt+e"
+  },
+  "mode": "online",
+  "notifications": true,
+  "sounds": true,
+  "overlay": true,
+  "auto_paste": false,
+
+  "online": {
+    "provider": "gemini",
+    "api_key": "",
+    "gemini": {
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "model": "gemini-3.5-flash",
+      "fast_model": "gemini-3.5-flash-lite",
+      "reasoning_effort": "low",
+      "timeout_seconds": 40,
+      "total_budget_seconds": 100,
+      "fallback_models": ["gemini-3.8-flash"]
+    },
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "transcribe_model": "whisper-1",
+      "translate_model": "gpt-4o-mini"
+    },
+    "groq": {
+      "base_url": "https://api.groq.com/openai/v1",
+      "transcribe_model": "whisper-large-v3",
+      "translate_model": "llama-3.3-70b-versatile"
+    }
+  },
+
+  "offline": {
+    "whisper_model": "large-v3-turbo",
+    "device": "auto",
+    "translation_model": "facebook/nllb-200-distilled-600M"
+  },
+
+  "audio": {
+    "sample_rate": 16000,
+    "min_seconds": 0.4,
+    "silence_peak": 0.01
+  }
+}

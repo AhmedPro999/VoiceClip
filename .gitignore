@@ -1,0 +1,17 @@
+# ---- secrets & personal data: NEVER commit these ----
+config.json
+voiceclip.log
+voiceclip.log.*
+
+# ---- local environment & downloads ----
+.venv/
+venv/
+models/
+__pycache__/
+*.pyc
+
+# ---- editors / OS ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

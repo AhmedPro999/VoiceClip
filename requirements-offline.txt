@@ -1,0 +1,8 @@
+# Optional: offline mode (large downloads, ~4 GB of packages + ~4 GB of models on first run)
+faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+transformers
+sentencepiece
+sacremoses
+# torch is installed separately by install_offline.bat (CUDA build)

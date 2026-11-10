@@ -1,0 +1,9 @@
+# Core (small, needed for online mode with Gemini / Groq / OpenAI)
+pynput
+sounddevice
+numpy
+pyperclip
+PySide6-Essentials
+winotify
+openai
+lameenc

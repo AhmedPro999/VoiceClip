@@ -1,2 +1,3 @@
 # VoiceClip
-Talk => Write => Trans
+Talk => Write => Trans 
+(---------Windows-------)

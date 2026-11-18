@@ -1,6 +1,6 @@
 # 🎙 VoiceClip
 
-**Talk ⇒ Write ⇒ Trans** · Windows
+**Speak ⇒ Trans ⇒ Copy => Write ** · Windows
 **Hold, speak Arabic, release.. and the text is in your clipboard.**
 
 A lightweight Windows utility that sits in your system tray next to the clock. Hold a hotkey and speak in Arabic (Modern Standard Arabic or Egyptian dialect), and the moment you release the key, your speech is transcribed and copied directly to your clipboard—ready to paste anywhere: WhatsApp, chat apps, documents, or emails. It also includes a second hotkey that instantly translates your spoken Arabic into natural, professional English.

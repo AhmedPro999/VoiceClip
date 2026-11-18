@@ -69,6 +69,47 @@ class GeminiProcessor:
     def __init__(self):
         self._cached = None      # (key, base_url, timeout) -> OpenAI client
         self._cached_sig = None
+        # Model cooldown memory: {model: (skip_until_timestamp, reason)}. In memory only.
+        self._cooldown: dict[str, tuple[float, str]] = {}
+
+    # ---- model cooldown -------------------------------------------------------
+    # Only Google's own "busy / quota / retired" answers put a model on cooldown.
+    # Timeouts and connection errors do not, because those are usually the user's network.
+    _COOLDOWN_STATUSES = {429, 500, 502, 503, 504}
+
+    def _cooldown_seconds(self, status: int) -> float:
+        if status == 404:
+            return 3600.0  # model retired / unknown: skip for an hour
+        return float(settings.get("online", "gemini", "cooldown_seconds", default=300))
+
+    def _mark_failed(self, model: str, status: int):
+        if status == 404 or status in self._COOLDOWN_STATUSES:
+            secs = self._cooldown_seconds(status)
+            self._cooldown[model] = (time.time() + secs, f"HTTP {status}")
+            log.info("model %s on cooldown for %.0fs (HTTP %s)", model, secs, status)
+
+    def _mark_ok(self, model: str):
+        if self._cooldown.pop(model, None):
+            log.info("model %s back in rotation", model)
+
+    def _arrange(self, models: list[str]) -> list[str]:
+        """Healthy models first in their normal order, cooling ones moved to the end.
+        Cooling models are still tried last, so if every healthy one fails we never
+        give up without trying them all."""
+        now = time.time()
+        for m, (until, _) in list(self._cooldown.items()):
+            if until <= now:
+                del self._cooldown[m]
+        healthy = [m for m in models if m not in self._cooldown]
+        cooling = [m for m in models if m in self._cooldown]
+        if cooling:
+            log.info("skipping first: %s", ", ".join(
+                f"{m} ({int(self._cooldown[m][0] - now)}s left)" for m in cooling))
+        return healthy + cooling
+
+    def cooldown_status(self) -> dict[str, int]:
+        now = time.time()
+        return {m: int(u - now) for m, (u, _) in self._cooldown.items() if u > now}
 
     def _client(self):
         api_key = settings.get("online", "api_key", default="") or os.environ.get(
@@ -101,6 +142,18 @@ class GeminiProcessor:
         # Transcription only -> fastest model first; translation -> best model first.
         return self._cached, {"transcribe": order([fast, main]), "translate": order([main, fast])}
 
+    def warm(self):
+        """Open the HTTPS connection to Google ahead of time (cheap request, no quota),
+        so the real request after the key is released skips the TLS handshake.
+        Called at startup and every time recording begins, while the user is still talking."""
+        try:
+            t0 = time.time()
+            client, _ = self._client()
+            client.models.list()
+            log.info("gemini connection warm in %.1fs", time.time() - t0)
+        except Exception as exc:
+            log.info("gemini warm-up skipped: %s", type(exc).__name__)
+
     def build_messages(self, audio: np.ndarray, sample_rate: int, translate: bool) -> list:
         data, fmt = encode_audio(audio, sample_rate)
         b64 = base64.b64encode(data).decode("ascii")
@@ -118,7 +171,7 @@ class GeminiProcessor:
         from openai import APIStatusError, APITimeoutError, APIConnectionError
 
         client, orders = self._client()
-        models = orders["translate" if translate else "transcribe"]
+        models = self._arrange(orders["translate" if translate else "transcribe"])
         messages = self.build_messages(audio, sample_rate, translate)
         # "low" skips most of the model's internal thinking: ~3x faster, same transcript.
         effort = settings.get("online", "gemini", "reasoning_effort", default="low")
@@ -136,10 +189,12 @@ class GeminiProcessor:
                     model=model, temperature=0.2, messages=messages, **extra
                 )
                 log.info("gemini %s answered in %.1fs (%s)", model, time.time() - t0, messages[0]["content"][1]["input_audio"]["format"])
+                self._mark_ok(model)
                 break
             except APIStatusError as exc:
                 last_err = exc
                 log.warning("gemini %s failed in %.1fs: HTTP %s", model, time.time() - t0, exc.status_code)
+                self._mark_failed(model, exc.status_code)
                 # 404 = model retired, 429 = quota, 5xx = overloaded: try the next model.
                 if exc.status_code in (404, 429) or exc.status_code >= 500:
                     continue
@@ -173,7 +228,9 @@ class GeminiProcessor:
             "Translate this spoken Egyptian Arabic into natural, fluent English. "
             "Output ONLY the translation.\n\n" + arabic
         )
-        for model in orders["translate"]:
+        from openai import APIStatusError
+
+        for model in self._arrange(orders["translate"]):
             try:
                 resp = client.chat.completions.create(
                     model=model, temperature=0.2, reasoning_effort="low",
@@ -182,7 +239,11 @@ class GeminiProcessor:
                 text = (resp.choices[0].message.content or "").strip().strip('"')
                 if text:
                     log.info("gemini %s translated text fallback", model)
+                    self._mark_ok(model)
                     return " ".join(text.split())
+            except APIStatusError as exc:
+                log.warning("text translate on %s failed: HTTP %s", model, exc.status_code)
+                self._mark_failed(model, exc.status_code)
             except Exception as exc:
                 log.warning("text translate on %s failed: %s", model, type(exc).__name__)
         return ""

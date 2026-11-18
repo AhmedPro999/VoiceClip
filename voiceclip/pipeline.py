@@ -60,6 +60,8 @@ class Pipeline:
                     notifier.notify("VoiceClip", "محتاج API key: افتح الإعدادات من قائمة الأيقونة وحطه في online.api_key", force=True)
                 else:
                     notifier.notify("VoiceClip", "جاهز (وضع أونلاين). Alt+A عربي، Alt+E إنجليزي")
+                    if settings.get("online", "provider", default="gemini") == "gemini":
+                        self.gemini.warm()  # imports openai + opens the connection now, not on first use
                 return
             self._set_status("loading")
             try:
@@ -101,6 +103,8 @@ class Pipeline:
         self._set_status(f"recording:{target}")
         notifier.beep_start()
         overlay.get().show("recording", "🎙 بيسجل · " + _label(target))
+        if settings.get("mode", default="online") == "online" and settings.get("online", "provider", default="gemini") == "gemini":
+            threading.Thread(target=self.gemini.warm, daemon=True).start()
 
     def end(self):
         log.info("end() recording=%s", self.recorder.recording)

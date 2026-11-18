@@ -17,7 +17,7 @@ A lightweight Windows utility that sits in your system tray next to the clock. H
 | 📋 **Straight to Clipboard** | Text is copied automatically. Includes an optional setting to auto-paste directly at your cursor without pressing `Ctrl+V`. |
 | 💊 **Modern Status Pill** | A sleek, non-intrusive pill overlay at the bottom of the screen: red for recording, yellow for processing, green when done. Fades in and out smoothly without stealing window focus. |
 | 🧠 **Powered by Gemini** | Uses Google Gemini with a free API key. It processes the audio natively, handling both transcription and translation in a single request. |
-| 🔁 **Automatic Fallback** | If the primary model is busy, hits a rate limit, or encounters a network hiccup, it automatically retries with a fallback model. |
+| 🔁 **Automatic Fallback** | If the primary model is busy, hits a rate limit, or encounters a network hiccup, it automatically retries with a fallback model. A model Google reports as busy is remembered and skipped for 5 minutes, so you don't wait on it again with every recording. |
 | 🔇 **Silence Detection** | If no audio is detected, it alerts you immediately without sending a request—saving your API quota. |
 | 📜 **20-Item History** | Access your last 20 transcriptions from the tray icon menu; click any past entry to copy it again. |
 | 🔌 **Offline Mode (Optional)** | Run Whisper + a local translation model completely offline on your machine if you have an NVIDIA GPU and don't mind a one-time large download. |
@@ -116,14 +116,15 @@ The status pill turns red and displays **"Recording Failed · Arabic/English"** 
 | `sounds` | `true` | Enable audio feedback beeps |
 | `online.provider` | `gemini` | `gemini`, `openai`, or `groq` |
 | `online.api_key` |  | Your API key (or use the `VOICECLIP_API_KEY` environment variable) |
-| `online.gemini.model` | `gemini-3.5-flash` | Primary model used for translation (more accurate) |
+| `online.gemini.model` | `gemini-3.1-flash-lite` | Model used for English translation. For higher accuracy at the cost of speed, use `gemini-3.5-flash` (about 10 seconds slower) |
 | `online.gemini.fast_model` | `gemini-3.5-flash-lite` | Fast model used for Arabic transcription (faster) |
-| `online.gemini.fallback_models` | `["gemini-3.8-flash"]` | Automatically tried in order if the primary model fails |
+| `online.gemini.fallback_models` | `["gemini-flash-lite-latest", "gemini-3.5-flash"]` | Automatically tried in order if the primary model fails |
 | `online.gemini.reasoning_effort` | `low` | `low` is faster. Set to `medium` for more nuanced translations of long, complex sentences |
-| `online.gemini.timeout_seconds` | `40` | Timeout per individual API request |
-| `online.gemini.total_budget_seconds` | `100` | Maximum total time allowed (including retries) before giving up |
+| `online.gemini.timeout_seconds` | `12` | Timeout per individual API request. A stuck model is skipped after this and the next one is tried |
+| `online.gemini.total_budget_seconds` | `45` | Maximum total time allowed (including retries) before giving up |
+| `online.gemini.cooldown_seconds` | `300` | How long a model that Google reports as busy or over quota is moved to the end of the list |
 | `audio.min_seconds` | `0.4` | Minimum recording duration accepted |
-| `audio.silence_peak` | `0.01` | Minimum audio peak threshold. If your mic is very quiet and triggers "No audible speech" while speaking, lower this to `0.005` |
+| `audio.silence_peak` | `0.004` | Minimum audio peak threshold. If your mic is very quiet and triggers "No audible speech" while speaking, lower this to `0.002` |
 | `offline.whisper_model` | `large-v3-turbo` | Or use `medium` / `small` for lower-spec hardware |
 | `offline.device` | `auto` | `cuda` / `cpu` |
 
@@ -136,7 +137,10 @@ The tool reloads `config.json` before every recording, so any changes take effec
 * VoiceClip communicates with Gemini via the **API** using your personal key. This is completely separate from the consumer Gemini web chat and has its own dedicated quota.
 * The free tier has **per-minute (RPM) and per-day (RPD) limits** for each model, which reset daily. The API key itself never expires.
 * Every hotkey press-and-release equals **one API request**. Normal daily usage rarely hits the limit.
-* Arabic transcription uses `flash-lite` (faster response, higher quota), while English translation uses `flash` (higher accuracy). If either model hits its rate limit, VoiceClip automatically falls back to the other.
+* Arabic transcription uses `gemini-3.5-flash-lite` and English translation uses `gemini-3.1-flash-lite`. Both typically respond in 2 to 4 seconds, and the translation still reads naturally.
+* If a model hits its rate limit or is overloaded, VoiceClip automatically falls back to the next one and **remembers it**: that model is skipped for 5 minutes instead of being retried on every recording. If every other model fails, it is still tried last.
+* Timeouts are not held against a model, since they are usually caused by the network rather than the model.
+* The connection to Google is opened the moment you press the hotkey, while you are still speaking, so the request starts immediately when you release.
 * Audio is compressed to MP3 in memory before uploading (12 seconds ≈ 47 KB) to keep requests fast even on slow connections.
 * If Google updates or deprecates model names in the future, simply update `model` and `fast_model` in `config.json`.
 
@@ -176,9 +180,10 @@ If you want to run VoiceClip with zero internet connection or without any extern
 | **No icon in the system tray** | Run `run_debug.bat` to keep a console window open and see the exact error message. |
 | **Hotkey doesn't work inside a specific app** | Apps running as Administrator block global hotkeys from standard-privilege apps. Run `run.bat` as Administrator. |
 | **"API key required" error** | Your key is missing from `config.json` or formatted incorrectly. |
-| **Slow response times** | Usually network latency. Try setting `fast_model` for everything, or switch to Offline Mode. |
+| **Slow response times** | Usually network latency. Open `voiceclip.log` to see how long each request took and which model answered. |
 | **Auto-paste isn't pasting** | The target window is likely running as Administrator (see above). |
-| **"No audible speech" while speaking clearly** | Lower `audio.silence_peak` in `config.json` to `0.005`. |
+| **`No module named ...` after updating Python** | The update removed the Python version VoiceClip was built on. Delete the `.venv` folder and run `install.bat` again. |
+| **"No audible speech" while speaking clearly** | Raise your microphone level in Windows sound settings, or lower `audio.silence_peak` in `config.json` to `0.002`. |
 | **Need more details?** | Open `voiceclip.log` from the tray menu—every step is logged with timestamps. |
 
 ---
